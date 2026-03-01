@@ -37,48 +37,6 @@ Input Prompt
 │
 ▼
 {"harmful": bool, "articles": [...]}
-Here is the well-formatted Markdown `README.md` for your project. I have cleaned up the formatting, properly structured the tables, and added syntax highlighting for the code blocks.
-
-```markdown
-# CCPA Compliance Analyzer
-
-## Solution Overview
-
-This system analyzes business practice descriptions for California Consumer Privacy Act (CCPA) violations using a **RAG (Retrieval-Augmented Generation)** pipeline:
-
-```text
-Input Prompt
-│
-▼
-┌───────────────────────────┐
-│     Embedding (MiniLM)    │ ← sentence-transformers/all-MiniLM-L6-v2
-└─────────────┬─────────────┘
-│
-▼
-┌───────────────────────────┐
-│    FAISS Vector Search    │ ← Retrieves top-K relevant CCPA sections
-│    + Keyword Boosting     │ ← Hybrid retrieval for better recall
-└─────────────┬─────────────┘
-│
-▼
-┌───────────────────────────┐
-│     Page Index Lookup     │ ← Maps sections to PDF page numbers
-└─────────────┬─────────────┘
-│
-▼
-┌───────────────────────────┐
-│    Qwen2.5-7B-Instruct    │ ← 4-bit quantized LLM (< 8B params)
-│      + System Prompt      │ ← Structured output with section citations
-└─────────────┬─────────────┘
-│
-▼
-┌───────────────────────────┐
-│       JSON Parser +       │ ← Robust parsing with multiple fallbacks
-│         Validator         │ ← Section normalization & format enforcement
-└─────────────┬─────────────┘
-│
-▼
-{"harmful": bool, "articles": [...]}
 ```
 
 ### Components
