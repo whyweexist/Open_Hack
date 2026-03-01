@@ -1,0 +1,25 @@
+version: "3.9"
+
+services:
+  ccpa-detector:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ccpa-violation-detector
+    ports:
+      - "8000:8000"
+    environment:
+      - LLM_N_THREADS=4
+      - LLM_CONTEXT_LENGTH=2048
+      - LLM_MAX_TOKENS=512
+      - LLM_TEMPERATURE=0.1
+      - TOP_K_RETRIEVAL=5
+      - TOP_K_EXPERTS=2
+    restart: unless-stopped
+    # Codespaces-friendly resource limits
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 2G

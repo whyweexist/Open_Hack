@@ -1,0 +1,13 @@
+__pycache__
+*.pyc
+*.pyo
+.git
+.gitignore
+.env
+*.md
+test_results.json
+.vscode
+.idea
+*.egg-info
+dist
+build
