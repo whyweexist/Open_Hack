@@ -69,31 +69,49 @@ class MoERouter:
         """
         Compute gate scores and return activated experts (top-K, above
         threshold), sorted by relevance descending.
+        
+        Uses cosine similarity between query and expert descriptions.
+        Always returns at least one expert even if below threshold.
         """
         if not self._experts or self._expert_embeddings is None:
+            logger.warning("MoE Router: No experts registered")
+            return []
+        
+        if not query or not isinstance(query, str):
+            logger.warning("MoE Router: Invalid query")
             return []
 
+        # Encode query and ensure normalization
         query_emb = self.embedding_engine.encode_query(query)  # (dim,)
+        query_emb = self._normalize_embedding(query_emb)
+        
+        # Compute cosine similarity scores
         scores = self._compute_gate_scores(query_emb)
+        
+        if scores is None or len(scores) == 0:
+            logger.warning("MoE Router: No scores computed")
+            return []
 
-        # Sort descending
+        # Sort experts by relevance (descending)
         ranked = sorted(enumerate(scores), key=lambda x: x[1], reverse=True)
 
         activations: List[ExpertActivation] = []
+        
+        # Collect experts above threshold
         for idx, score in ranked[: self.top_k]:
             if score < self.threshold:
-                continue
+                break
             activations.append(
-                ExpertActivation(expert=self._experts[idx], gate_score=score)
+                ExpertActivation(expert=self._experts[idx], gate_score=float(score))
             )
 
-        # If no expert exceeds threshold, activate the best one anyway
-        # so we always produce an answer.
+        # If no expert exceeds threshold, activate the top expert anyway
+        # to ensure we always produce an answer
         if not activations and ranked:
             best_idx, best_score = ranked[0]
             activations.append(
                 ExpertActivation(
-                    expert=self._experts[best_idx], gate_score=best_score
+                    expert=self._experts[best_idx], gate_score=float(best_score)
                 )
             )
 
@@ -106,6 +124,34 @@ class MoERouter:
 
     # ── Internal ───────────────────────────────────────────────────────
     def _compute_gate_scores(self, query_emb: np.ndarray) -> np.ndarray:
-        """Cosine similarity between query and every expert description."""
-        # query_emb: (dim,)   expert_embs: (N, dim)  → (N,)
-        return self._expert_embeddings @ query_emb
+        """
+        Compute cosine similarity between query and every expert description.
+        
+        Args:
+            query_emb: Normalized query embedding of shape (dim,)
+            
+        Returns:
+            Array of similarity scores, shape (num_experts,)
+        """
+        if query_emb is None or self._expert_embeddings is None:
+            return np.array([])
+        
+        try:
+            # Inner product with normalized vectors = cosine similarity
+            # query_emb: (dim,)  expert_embs: (N, dim)  → (N,)
+            scores = self._expert_embeddings @ query_emb
+            return np.asarray(scores, dtype=np.float32)
+        except Exception as e:
+            logger.error("Error computing gate scores: %s", e)
+            return np.array([])
+    
+    @staticmethod
+    def _normalize_embedding(embedding: np.ndarray) -> np.ndarray:
+        """L2-normalize an embedding vector for cosine similarity."""
+        if embedding is None or len(embedding) == 0:
+            return embedding
+        
+        norm = np.linalg.norm(embedding)
+        if norm > 0:
+            return embedding / norm
+        return embedding

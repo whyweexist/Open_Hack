@@ -65,7 +65,18 @@ class Expert:
     def retrieve(
         self, query_embedding: np.ndarray, top_k: int = TOP_K_RETRIEVAL
     ) -> List[SearchResult]:
-        return self.vector_store.search(query_embedding, top_k=top_k)
+        """Retrieve top-k chunks using normalized query embedding."""
+        # Ensure query is normalized for cosine similarity search
+        normalized_query = self._normalize_embedding(query_embedding)
+        return self.vector_store.search(normalized_query, top_k=top_k)
+    
+    @staticmethod
+    def _normalize_embedding(embedding: np.ndarray) -> np.ndarray:
+        """L2-normalize an embedding vector."""
+        norm = np.linalg.norm(embedding)
+        if norm > 0:
+            return embedding / norm
+        return embedding
 
     # ── Keyword pre-check ──────────────────────────────────────────────
     def keyword_relevance(self, text: str) -> float:
@@ -82,15 +93,28 @@ class Expert:
         top_k: int = TOP_K_RETRIEVAL,
     ) -> ExpertOpinion:
         """Run retrieval and produce an expert opinion."""
+        # Validate inputs
+        if query_embedding is None or len(query_embedding) == 0:
+            logger.warning("%s: Invalid query embedding", self.name)
+            return self._empty_opinion(query)
+        
         results = self.retrieve(query_embedding, top_k)
         kw_score = self.keyword_relevance(query)
 
-        # Average retrieval score
-        avg_ret_score = (
-            np.mean([r.score for r in results]) if results else 0.0
-        )
+        # Calculate confidence from retrieval results
+        if results:
+            # Use max score from top results (most relevant chunk)
+            max_ret_score = max(r.score for r in results)
+            # Average of top-3 results
+            avg_ret_score = np.mean([r.score for r in results[:3]])
+            # Weighted combination favoring maximum relevance
+            ret_score = 0.4 * max_ret_score + 0.6 * avg_ret_score
+        else:
+            ret_score = 0.0
 
-        confidence = 0.6 * avg_ret_score + 0.4 * kw_score
+        # Combine retrieval confidence with keyword relevance
+        confidence = 0.7 * ret_score + 0.3 * kw_score
+        confidence = float(np.clip(confidence, 0.0, 1.0))
 
         sections_found = list(
             {r.metadata.get("section_id", "") for r in results if r.metadata}
@@ -101,17 +125,33 @@ class Expert:
             domain=self.domain,
             relevant_sections=sections_found,
             retrieved_chunks=results,
-            confidence=float(confidence),
+            confidence=confidence,
             reasoning_hint=self._build_hint(query, results),
+        )
+    
+    def _empty_opinion(self, query: str) -> ExpertOpinion:
+        """Return a zero-confidence opinion when no retrieval happens."""
+        return ExpertOpinion(
+            expert_name=self.name,
+            domain=self.domain,
+            relevant_sections=[],
+            retrieved_chunks=[],
+            confidence=0.0,
+            reasoning_hint=f"Expert '{self.name}' could not analyse query.",
         )
 
     def _build_hint(self, query: str, results: List[SearchResult]) -> str:
+        """Create a human-readable reasoning hint."""
         if not results:
             return f"No relevant {self.domain} chunks found."
-        secs = ", ".join({r.metadata.get("section_id", "?") for r in results})
+        
+        # Get unique sections and compute average score
+        secs = list({r.metadata.get("section_id", "?") for r in results})
+        avg_score = np.mean([r.score for r in results]) if results else 0.0
+        
         return (
             f"Expert '{self.name}' found {len(results)} relevant chunk(s) "
-            f"from section(s) {secs}."
+            f"from section(s) {', '.join(secs)} (avg relevance: {avg_score:.2f})."
         )
 
 
